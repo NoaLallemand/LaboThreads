@@ -89,11 +89,14 @@ int main(int argc, char* argv[])
 {
 	int evt;
 
-	//pthread_create(threadCle, NULL, FctThreadCle, NULL);
+	pthread_mutex_init(&mutexGrilleJeu, NULL);
+
+	pthread_create(&threadCle, NULL, FctThreadCle, NULL);
+	initGrilleJeu();
 
 	ouvrirFenetreGraphique();
 
-	afficherCage(2);
+	/*afficherCage(2);
 	afficherCage(3);
 	afficherCage(4);
 
@@ -117,7 +120,7 @@ int main(int argc, char* argv[])
 	effacerCarres(9, 10, 2, 1);
 
 	afficherEchec(1);
-	afficherScore(1999);
+	afficherScore(1999);*/
 
 	while (1)
 	{
@@ -140,6 +143,8 @@ int main(int argc, char* argv[])
 			printf("KEY_RIGHT\n");
 	    }
 	}
+
+	pthread_join(threadCle, NULL);
 }
 
 // -------------------------------------
@@ -184,27 +189,33 @@ void afficherGrilleJeu()
 
 void* FctThreadCle(void *)
 {
+	struct timespec temps;
+	temps.tv_sec = 0;
+	temps.tv_nsec = 700000000;
+
+	int i;
 	while(1)
 	{
-		pthread_mutex_lock(&mutexGrilleJeu);
-
-		for(int i=0; i < 4; i++)
+		for(i=0; i <= 4; i++)
 		{
+			pthread_mutex_lock(&mutexGrilleJeu);
 			switch(i)
 			{
-				case 0:
-				{
-					setGrilleJeu(3, 12, 4, threadCle);
-					afficherCle(1);
+				case 1:
+					setGrilleJeu(0, 1, CLE, threadCle);
 					break;
-				}
-			}
-			setGrilleJeu(3, 13, 4, threadCle);
-			afficherCle(4);
-		}
-		
 
-		pthread_mutex_unlock(&mutexGrilleJeu);
+				default: 
+					setGrilleJeu(0, 1, VIDE, threadCle);
+			}
+			afficherCle(i);
+			pthread_mutex_unlock(&mutexGrilleJeu);
+			
+			
+			nanosleep(&temps, NULL);
+		}
 	}
+
+	pthread_exit(NULL);
 }
 

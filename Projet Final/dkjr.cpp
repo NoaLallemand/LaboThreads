@@ -92,59 +92,28 @@ int main(int argc, char* argv[])
 	ouvrirFenetreGraphique();
 	initGrilleJeu();
 
+	struct sigaction signal;
+	signal.sa_handler = HandlerSIGQUIT;
+	sigemptyset(&signal.sa_mask);
+	signal.sa_flags = 0;
+
+	sigset_t masque;
+	sigemptyset(&masque);
+	sigaddset(&masque, SIGQUIT);
+	sigprocmask(SIG_SETMASK, &masque, NULL); //On masque le signal SIGQUIT partout. Il sera seulement visible par FctThreadDKJr
+
+	sigaction(SIGQUIT, &signal, NULL);
+
 	pthread_mutex_init(&mutexGrilleJeu, NULL);
+	pthread_mutex_init(&mutexEvenement, NULL);
 
 	pthread_create(&threadCle, NULL, FctThreadCle, NULL);
-
-	/*afficherCage(2);
-	afficherCage(3);
-	afficherCage(4);
-
-	afficherRireDK();
-
-	afficherCle(3);
-
-	afficherCroco(11, 2);
-	afficherCroco(17, 1);
-	afficherCroco(0, 3);
-	afficherCroco(12, 5);
-	afficherCroco(18, 4);
-
-	afficherDKJr(11, 9, 1);
-	afficherDKJr(6, 19, 7);
-	afficherDKJr(0, 0, 9);
-	
-	afficherCorbeau(10, 2);
-	afficherCorbeau(16, 1);
-	
-	effacerCarres(9, 10, 2, 1);
-
-	afficherEchec(1);
-	afficherScore(1999);*/
-
-	while (1)
-	{
-	    evt = lireEvenement();
-
-	    switch (evt)
-	    {
-		case SDL_QUIT:
-			exit(0);
-		case SDLK_UP:
-			printf("KEY_UP\n");
-			break;
-		case SDLK_DOWN:
-			printf("KEY_DOWN\n");
-			break;
-		case SDLK_LEFT:
-			printf("KEY_LEFT\n");
-			break;
-		case SDLK_RIGHT:
-			printf("KEY_RIGHT\n");
-	    }
-	}
+	pthread_create(&threadEvenements, NULL, FctThreadEvenements, NULL);
+	pthread_create(&threadDKJr, NULL, FctThreadDKJr, NULL);
 
 	pthread_join(threadCle, NULL);
+	pthread_join(threadEvenements, NULL);
+	pthread_join(threadDKJr, NULL);
 }
 
 // -------------------------------------
@@ -237,5 +206,377 @@ void* FctThreadCle(void *)
 	}
 
 	pthread_exit(NULL);
+}
+
+void* FctThreadEvenements(void *)
+{
+	int evt;
+	struct timespec temps;
+	temps.tv_nsec = 10000000;
+	temps.tv_sec = 0;
+
+
+	while (1)
+	{
+	    evt = lireEvenement();
+
+		pthread_mutex_lock(&mutexEvenement);
+	    switch (evt)
+	    {
+			case SDL_QUIT:
+				pthread_mutex_unlock(&mutexEvenement);
+				exit(0);
+
+			case SDLK_UP:
+				evenement = SDLK_UP;
+				break;
+
+			case SDLK_DOWN:
+				evenement = SDLK_DOWN;
+				break;
+
+			case SDLK_LEFT:
+				evenement = SDLK_LEFT;
+				break;
+
+			case SDLK_RIGHT:
+				evenement = SDLK_RIGHT;
+	    }
+		pthread_mutex_unlock(&mutexEvenement);
+
+		kill(getpid(), SIGQUIT);
+		nanosleep(&temps, NULL);
+
+		pthread_mutex_lock(&mutexEvenement);
+		evenement = AUCUN_EVENEMENT;
+		pthread_mutex_unlock(&mutexEvenement);
+	}
+}
+
+void* FctThreadDKJr(void* p)
+{
+ 	bool on = true;
+
+	struct timespec temps;
+	temps.tv_sec = 1,4;
+	temps.tv_nsec = 0;
+
+	printf("Debut ThreadDKJr....tid = %d\n", pthread_self());
+
+ 	pthread_mutex_lock(&mutexGrilleJeu);
+ 
+ 	setGrilleJeu(3, 1, DKJR); 
+ 	afficherDKJr(11, 9, 1); 
+ 	etatDKJr = LIBRE_BAS; 
+ 	positionDKJr = 1;
+ 
+ 	pthread_mutex_unlock(&mutexGrilleJeu);
+
+	sigset_t masque;
+	sigemptyset(&masque);
+	sigprocmask(SIG_SETMASK, &masque, NULL);
+
+ 	while(on)
+ 	{
+ 		pause();
+ 		pthread_mutex_lock(&mutexEvenement);
+		pthread_mutex_lock(&mutexGrilleJeu);
+ 		switch (etatDKJr)
+ 		{
+ 			case LIBRE_BAS:
+			switch (evenement)
+			{
+				case SDLK_LEFT:
+					if (positionDKJr > 1)
+					{
+						setGrilleJeu(3, positionDKJr);
+						effacerCarres(11, (positionDKJr * 2) + 7, 2, 2);
+						positionDKJr--;
+						setGrilleJeu(3, positionDKJr, DKJR);
+						afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+						printf("State: LIBRE_BAS --- Event: KEY_LEFT\n");
+						afficherGrilleJeu();
+					}
+					break;
+
+				case SDLK_RIGHT:
+					if(positionDKJr < 7)
+					{
+						setGrilleJeu(3, positionDKJr); //on efface de la grille de jeu le "1" pour dire que DKJr ne s'y trouve plus
+						effacerCarres(11, (positionDKJr * 2) + 7, 2, 2);
+						positionDKJr++;
+						setGrilleJeu(3, positionDKJr, DKJR);
+						afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+						
+						printf("State: LIBRE_BAS --- Event: KEY_RIGHT\n");
+						afficherGrilleJeu();
+					}
+					break;
+
+				case SDLK_UP:
+					if( (positionDKJr >= 2 && positionDKJr <= 4) || positionDKJr == 6)
+					{
+						setGrilleJeu(3, positionDKJr);
+						effacerCarres(11, (positionDKJr * 2) + 7, 2, 2); //On efface DKJR de l'emplacement en bas
+
+						setGrilleJeu(2, positionDKJr, DKJR);
+						afficherDKJr(10, (positionDKJr * 2) + 7, 8); //on actualise sa position quand il a sauté
+						
+						printf("State: LIBRE_BAS --- Event: KEY_UP\n");
+						afficherGrilleJeu();
+
+						pthread_mutex_unlock(&mutexGrilleJeu);
+						nanosleep(&temps, NULL);
+						pthread_mutex_lock(&mutexGrilleJeu);
+
+						setGrilleJeu(2, positionDKJr);
+						effacerCarres(10, (positionDKJr * 2) + 7, 2, 2); //On efface DKJR d'en haut pour ensuite le refaire tomber (effet de gravité)
+
+						setGrilleJeu(3, positionDKJr, DKJR);
+						afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+						
+						printf("State: LIBRE_BAS --- Event: Gravity after KEY_UP\n");
+						afficherGrilleJeu();
+					}
+					else
+					{
+						setGrilleJeu(3, positionDKJr);
+						effacerCarres(11, (positionDKJr * 2) + 7, 2, 2);
+
+						setGrilleJeu(2, positionDKJr, DKJR);
+						if(positionDKJr == 7)
+						{
+							etatDKJr = DOUBLE_LIANE_BAS;
+							afficherDKJr(10, (positionDKJr * 2) + 7, 5); //On affiche l'image 8 car DKJR se tient aux deux lianes
+						}
+						else
+						{
+							etatDKJr = LIANE_BAS;
+							afficherDKJr(10, (positionDKJr * 2) + 7, 7);
+						}
+						
+						printf("State: LIBRE_BAS --- Event: KEY_UP LIANE\n");
+						afficherGrilleJeu();
+					}
+					break;
+			}
+			break;
+ 			
+			case LIANE_BAS:
+			switch(evenement)
+			{
+				case SDLK_DOWN:
+				{
+					etatDKJr = LIBRE_BAS;
+					setGrilleJeu(2, positionDKJr);
+					effacerCarres(10, (positionDKJr * 2) + 7, 2, 2);
+
+					setGrilleJeu(3, positionDKJr, DKJR);
+					afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+					printf("State: LIANE_BAS --- Event: KEY_DOWN\n");
+					afficherGrilleJeu();
+				}
+				break;
+
+			}
+			break;
+			
+			case DOUBLE_LIANE_BAS:
+			switch(evenement)
+			{
+				case SDLK_DOWN:
+				{
+					etatDKJr = LIBRE_BAS;
+					setGrilleJeu(2, positionDKJr);
+					effacerCarres(10, (positionDKJr * 2) + 7, 2, 2);
+
+					setGrilleJeu(3, positionDKJr, DKJR);
+					afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+					printf("State: DOUBLE_LIANE_BAS --- Event: KEY_DOWN\n");
+					afficherGrilleJeu();
+				}
+				break;
+
+				case SDLK_UP:
+				{
+					etatDKJr = LIBRE_HAUT;
+					setGrilleJeu(2, positionDKJr);
+					effacerCarres(10, (positionDKJr * 2) + 7, 2, 2);
+
+					setGrilleJeu(1, positionDKJr, DKJR);
+					afficherDKJr(7, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+					printf("State: DOUBLE_LIANE_BAS --- Event: KEY_UP\n");
+					afficherGrilleJeu();
+				}
+				break;
+			}
+			break;
+
+			case LIBRE_HAUT:
+			switch(evenement)
+			{
+				case SDLK_DOWN:
+					if(positionDKJr == 7)
+					{
+						etatDKJr = DOUBLE_LIANE_BAS;
+						setGrilleJeu(1, positionDKJr);
+						effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+						
+						setGrilleJeu(2, positionDKJr, DKJR);
+						afficherDKJr(10, (positionDKJr * 2) + 7, 5);
+
+						printf("State: LIBRE_HAUT --- Event: KEY_DOWN\n");
+						afficherGrilleJeu();
+					}
+					break;
+
+				case SDLK_LEFT:
+					if(positionDKJr > 3)
+					{
+						setGrilleJeu(1, positionDKJr);
+						effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+						positionDKJr--;
+						setGrilleJeu(1, positionDKJr, DKJR);
+						afficherDKJr(7, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+						printf("State: LIBRE_HAUT --- Event: KEY_LEFT\n");
+						afficherGrilleJeu();
+					}
+					else
+					{
+						if(positionDKJr == 3)
+						{
+							if(grilleJeu[0][1].type == CLE)
+							{
+								setGrilleJeu(1, positionDKJr);
+								effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+								
+								positionDKJr--;
+
+								etatDKJr = LIBRE_BAS;
+								setGrilleJeu(2, positionDKJr, DKJR);
+								afficherDKJr(10, (positionDKJr * 2) + 7, 8);
+								
+								printf("State: LIBRE_HAUT --- Event: KEY_LEFT\n");
+								afficherGrilleJeu();
+
+								pthread_mutex_unlock(&mutexGrilleJeu);
+								nanosleep(&temps, NULL);
+								pthread_mutex_lock(&mutexGrilleJeu);
+
+								setGrilleJeu(2, positionDKJr);
+								effacerCarres(10, (positionDKJr * 2) + 7, 2, 2);
+
+								setGrilleJeu(3, positionDKJr, DKJR);
+								afficherDKJr(11, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+								printf("State: LIBRE_BAS --- Event: Chute...\n");
+								afficherGrilleJeu();
+							}
+							else
+							{
+
+							}
+						}
+					}
+					break;
+
+				case SDLK_RIGHT:
+					if(positionDKJr < 7)
+					{
+						setGrilleJeu(1, positionDKJr);
+						effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+
+						if(evenement == SDLK_LEFT)
+							positionDKJr--;
+						else
+							positionDKJr++;
+
+						setGrilleJeu(1, positionDKJr, DKJR);
+						afficherDKJr(7, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+						printf("State: LIBRE_HAUT --- Event: KEY_RIGHT\n");
+						afficherGrilleJeu();
+					}
+					break;
+
+				case SDLK_UP:
+					if(positionDKJr == 3 || positionDKJr == 4)
+					{
+						setGrilleJeu(1, positionDKJr);
+						effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+
+						setGrilleJeu(0, positionDKJr, DKJR);
+						afficherDKJr(6, (positionDKJr * 2) + 7, 8);
+
+						printf("State: LIBRE_HAUT --- Event: KEY_UP\n");
+						afficherGrilleJeu();
+
+						pthread_mutex_unlock(&mutexGrilleJeu);
+						nanosleep(&temps, NULL);
+						pthread_mutex_lock(&mutexGrilleJeu);
+
+						setGrilleJeu(0, positionDKJr);
+						effacerCarres(6, (positionDKJr * 2) + 7, 2, 2); //On efface DKJR d'en haut pour ensuite le refaire tomber (effet de gravité)
+
+						setGrilleJeu(1, positionDKJr, DKJR);
+						afficherDKJr(7, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+						
+						printf("State: LIBRE_HAUT --- Event: Gravity after KEY_UP\n");
+						afficherGrilleJeu();
+					}
+					else
+					{
+						if(positionDKJr == 6)
+						{
+							etatDKJr = LIANE_HAUT;
+							setGrilleJeu(1, positionDKJr);
+							effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+
+							setGrilleJeu(0, positionDKJr, DKJR);
+							afficherDKJr(6, (positionDKJr * 2) + 7, 7);
+
+							printf("State: LIBRE_HAUT --- Event: KEY_UP LIANE\n");
+							afficherGrilleJeu();
+						}
+					}
+					break;
+			}
+			break;
+
+			case LIANE_HAUT:
+			switch(evenement)
+			{
+				case SDLK_DOWN:
+				{
+					etatDKJr = LIBRE_HAUT;
+					setGrilleJeu(0, positionDKJr);
+					effacerCarres(6, (positionDKJr * 2) + 7, 2, 2);
+
+					setGrilleJeu(1, positionDKJr, DKJR);
+					afficherDKJr(7, (positionDKJr * 2) + 7, ((positionDKJr - 1) % 4) + 1);
+
+					printf("State: LIANE_HAUT --- Event: KEY_DOWN\n");
+					afficherGrilleJeu();
+				}
+				break;
+			}
+			break;
+				
+ 		}
+ 		pthread_mutex_unlock(&mutexGrilleJeu);
+ 		pthread_mutex_unlock(&mutexEvenement);
+ 	}
+ 	pthread_exit(0);
+}
+
+
+void HandlerSIGQUIT(int signal)
+{
+	//printf("Réception du signal SIGQUIT\n");
 }
 

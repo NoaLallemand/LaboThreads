@@ -100,9 +100,15 @@ int main(int argc, char* argv[])
 	sigset_t masque;
 	sigemptyset(&masque);
 	sigaddset(&masque, SIGQUIT);
+	sigaddset(&masque, SIGALRM);
 	sigprocmask(SIG_SETMASK, &masque, NULL); //On masque le signal SIGQUIT partout. Il sera seulement visible par FctThreadDKJr
 
 	sigaction(SIGQUIT, &signal, NULL);
+
+	//On arme SIGALRM pour ThreadEnnemis
+	signal.sa_handler = HandlerSIGALRM;
+	sigemptyset(&signal.sa_mask);
+	sigaction(SIGALRM, &signal, NULL);
 
 	pthread_cond_init(&condDK, NULL);
 	pthread_cond_init(&condScore, NULL);
@@ -116,6 +122,7 @@ int main(int argc, char* argv[])
 	pthread_create(&threadEvenements, NULL, FctThreadEvenements, NULL);
 	pthread_create(&threadDK, NULL, FctThreadDK, NULL);
 	pthread_create(&threadScore, NULL, FctThreadScore, NULL);
+	pthread_create(&threadEnnemis, NULL, FctThreadEnnemis, NULL);
 	
 	while(nbrEchecs < 3)
 	{
@@ -126,6 +133,7 @@ int main(int argc, char* argv[])
 		afficherEchec(nbrEchecs);
 	}
 	
+	pthread_join(threadEnnemis, NULL);
 	pthread_join(threadScore, NULL);
 	pthread_join(threadDK, NULL);
 	pthread_join(threadEvenements, NULL);
@@ -276,8 +284,8 @@ void* FctThreadDKJr(void* p)
 	struct timespec temps; 
 	struct timespec temps2;
 
-	temps.tv_sec = 1,4;
-	temps.tv_nsec = 0;
+	temps.tv_sec = 1;
+	temps.tv_nsec = 400000000;
 
 	temps2.tv_sec = 0;
 	temps2.tv_nsec = 500000000;
@@ -482,17 +490,21 @@ void* FctThreadDKJr(void* p)
 
 							if(grilleJeu[0][1].type == VIDE)
 							{
+								pthread_mutex_unlock(&mutexGrilleJeu);
 								nanosleep(&temps2, NULL);
+								pthread_mutex_lock(&mutexGrilleJeu);
 
 								setGrilleJeu(0, positionDKJr);
 								effacerCarres(5, 12, 3, 2);
 								positionDKJr--;
 								setGrilleJeu(1, positionDKJr, DKJR);
-								afficherDKJr(6, 10, 11);
+								afficherDKJr(6, 11, 12);
 
 								afficherGrilleJeu();
 
+								pthread_mutex_unlock(&mutexGrilleJeu);
 								nanosleep(&temps2, NULL);
+								pthread_mutex_lock(&mutexGrilleJeu);
 
 								setGrilleJeu(1, positionDKJr);
 								effacerCarres(6, 10, 2, 3);
@@ -502,7 +514,9 @@ void* FctThreadDKJr(void* p)
 
 								afficherGrilleJeu();
 
+								pthread_mutex_unlock(&mutexGrilleJeu);
 								nanosleep(&temps2, NULL);
+								pthread_mutex_lock(&mutexGrilleJeu);
 
 								setGrilleJeu(3, positionDKJr);
 								effacerCarres(11, 7, 2, 2);
@@ -526,6 +540,7 @@ void* FctThreadDKJr(void* p)
 									pthread_mutex_unlock(&mutexDK);
 									pthread_cond_signal(&condDK);
 
+									nanosleep(&temps2, NULL);
 
 									pthread_mutex_lock(&mutexScore);
 									score += 10;
@@ -533,9 +548,19 @@ void* FctThreadDKJr(void* p)
 									pthread_mutex_unlock(&mutexScore);
 									pthread_cond_signal(&condScore);
 
-									nanosleep(&temps2, NULL);
 									setGrilleJeu(0, positionDKJr);
 									effacerCarres(3, 11, 3, 2);
+
+									positionDKJr--;
+									setGrilleJeu(1, positionDKJr, DKJR);
+									afficherDKJr(6, 10, 11);
+									
+									afficherGrilleJeu();
+
+									nanosleep(&temps2, NULL);
+
+									setGrilleJeu(1, positionDKJr);
+									effacerCarres(6, 10, 2, 3);
 
 									setGrilleJeu(3, 1, DKJR); 
 									afficherDKJr(11, 9, 1); 
@@ -668,14 +693,14 @@ void* FctThreadDK(void*)
 
 				case 2:
 					effacerCarres(4, 7, 2, 2);
-
-					pthread_mutex_lock(&mutexScore);
-					score += 10;
-					pthread_mutex_unlock(&mutexScore);
 					break;
 
 				case 1:
 				{
+					pthread_mutex_lock(&mutexScore);
+					score += 10;
+					pthread_mutex_unlock(&mutexScore);
+
 					effacerCarres(4, 9, 2, 2);
 					afficherRireDK();
 					nanosleep(&temps, NULL);
@@ -710,8 +735,84 @@ void* FctThreadScore(void*)
 	pthread_exit(0);
 }
 
+void* FctThreadEnnemis(void*)
+{
+	sigset_t masque;
+	sigemptyset(&masque);
+	sigaddset(&masque, SIGQUIT);
+	sigprocmask(SIG_SETMASK, &masque, NULL);
+
+	pthread_t threadCorbeaux;
+	pthread_t threadCroco;
+
+	struct timespec t;
+	struct timespec reste;
+	int tmpReste, choixEnnemi;
+	srand(time(NULL));
+
+	alarm(15);
+
+	while(1)
+	{	
+		if(delaiEnnemis > 2500)
+		{
+			tmpReste = (delaiEnnemis % 1000);
+			if(tmpReste == 0)
+			{
+				t.tv_sec = (delaiEnnemis/1000);
+				t.tv_nsec = 0;
+			}
+			else
+			{
+				t.tv_sec = (delaiEnnemis/1000);
+				t.tv_nsec = (tmpReste*1000000);
+			}
+		}
+		choixEnnemi = rand() % 4;
+		while(nanosleep(&t, &reste) == -1)
+		{
+			t.tv_sec = reste.tv_sec;
+			t.tv_nsec = reste.tv_nsec;
+		}
+		
+
+		if(choixEnnemi == 1 || choixEnnemi == 3)
+		{
+			pthread_create(&threadCorbeaux, NULL, FctThreadCorbeau, NULL);
+		}
+		else
+		{
+			pthread_create(&threadCroco, NULL, FctThreadCroco, NULL);
+		}
+	}
+
+	pthread_exit(0);
+}
+
+void* FctThreadCorbeau(void*)
+{
+	printf("Creation Thread Corbeau\n");
+	pthread_exit(0);
+}
+
+void* FctThreadCroco(void*)
+{
+	printf("Creation Thread Croco\n");
+	pthread_exit(0);
+}
+
 void HandlerSIGQUIT(int signal)
 {
-	//printf("Réception du signal SIGQUIT\n");
+
+}
+
+void HandlerSIGALRM(int signal)
+{
+	if(delaiEnnemis > 2500)
+	{
+		delaiEnnemis -= 250;
+		alarm(15);
+		printf("delaisEnnemis = %d\n", delaiEnnemis);
+	}
 }
 

@@ -118,6 +118,8 @@ int main(int argc, char* argv[])
 	pthread_mutex_init(&mutexDK, NULL);
 	pthread_mutex_init(&mutexScore, NULL);
 
+	pthread_key_create(&keySpec, DestructeurVS);
+
 	pthread_create(&threadCle, NULL, FctThreadCle, NULL);
 	pthread_create(&threadEvenements, NULL, FctThreadEvenements, NULL);
 	pthread_create(&threadDK, NULL, FctThreadDK, NULL);
@@ -791,7 +793,33 @@ void* FctThreadEnnemis(void*)
 
 void* FctThreadCorbeau(void*)
 {
-	printf("Creation Thread Corbeau\n");
+	int *numCol = (int*) malloc(sizeof(int));
+	pthread_setspecific(keySpec, numCol);
+
+	int numImg;
+	struct timespec t;
+	t.tv_nsec = 700000000;
+	t.tv_sec = 0;
+
+	for(*numCol = 0; *numCol < 7; (*numCol)++)
+	{
+		if(*numCol % 2 == 0)
+			numImg = 2;
+		else
+			numImg = 1;
+
+		afficherCorbeau( ((*numCol) * 2) + 8, numImg);
+		setGrilleJeu(2, *numCol, CORBEAU, pthread_self());
+		
+		nanosleep(&t, NULL);
+
+		if(*numCol % 2 == 0)
+			effacerCarres(9, ((*numCol) * 2) + 8, 2, 1);
+		else
+			effacerCarres(10, ((*numCol) * 2) + 8, 1, 1);
+
+	}
+
 	pthread_exit(0);
 }
 
@@ -799,6 +827,11 @@ void* FctThreadCroco(void*)
 {
 	printf("Creation Thread Croco\n");
 	pthread_exit(0);
+}
+
+void DestructeurVS(void *p)
+{
+
 }
 
 void HandlerSIGQUIT(int signal)

@@ -1034,6 +1034,7 @@ void* FctThreadCroco(void*)
 			pthread_mutex_unlock(&mutexGrilleJeu);
 			kill(getpid(), SIGHUP);
 			effacerCarres(8, ((pCroco->position-1) * 2) + 7);
+			setGrilleJeu(1, pCroco->position-1);
 			pthread_exit(0);
 		}
 		else
@@ -1082,6 +1083,7 @@ void* FctThreadCroco(void*)
 			pthread_mutex_unlock(&mutexGrilleJeu);
 			kill(getpid(), SIGCHLD);
 			effacerCarres(12, ((pCroco->position+1) * 2) + 8);
+			setGrilleJeu(3, pCroco->position+1);
 			pthread_exit(0);
 		}
 		else
@@ -1094,6 +1096,8 @@ void* FctThreadCroco(void*)
 
 			afficherCroco( (pCroco->position * 2) + 8, numImg);
 			setGrilleJeu(3, pCroco->position, CROCO, pthread_self());
+
+			afficherGrilleJeu();
 
 			pthread_mutex_unlock(&mutexGrilleJeu);
 			nanosleep(&t, NULL);
@@ -1113,13 +1117,22 @@ void tueEnnemisProximite()
 {
 	for(int i=0; i<3; i++)
 	{
-		if(grilleJeu[0][i+1].type == CROCO)
-			pthread_kill(grilleJeu[0][i+1].tid, SIGUSR2);
+		if(grilleJeu[3][i+1].type == CROCO)
+		{
+			printf("--------------\nCROCO DETECTE AU SPAWN\n-------------\n");
+			afficherGrilleJeu();
 
-		if(grilleJeu[1][i].type == CORBEAU)
-			pthread_kill(grilleJeu[1][i].tid, SIGUSR1);
-	}
-	
+			pthread_kill(grilleJeu[3][i+1].tid, SIGUSR2);
+		}	
+
+		if(grilleJeu[2][i].type == CORBEAU)
+		{
+			printf("--------------\nCORBEAU DETECTE AU SPAWN\n-------------\n");
+			afficherGrilleJeu();
+			
+			pthread_kill(grilleJeu[2][i].tid, SIGUSR1);
+		}		
+	}	
 }
 
 void HandlerSIGQUIT(int signal) {}

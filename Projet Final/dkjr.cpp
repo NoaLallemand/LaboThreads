@@ -790,6 +790,7 @@ void* FctThreadDKJr(void* p)
 					{
 						pthread_kill(grilleJeu[1][positionDKJr].tid, SIGUSR2);
 						on = false; //Fin du thread, on perd une vie
+						tueEnnemisProximite();
 					}
 					else
 					{
@@ -1097,7 +1098,7 @@ void* FctThreadCroco(void*)
 			afficherCroco( (pCroco->position * 2) + 8, numImg);
 			setGrilleJeu(3, pCroco->position, CROCO, pthread_self());
 
-			afficherGrilleJeu();
+			//DEBUG afficherGrilleJeu();
 
 			pthread_mutex_unlock(&mutexGrilleJeu);
 			nanosleep(&t, NULL);
@@ -1197,6 +1198,7 @@ void HandlerSIGHUP(int signal)
 	pthread_mutex_unlock(&mutexGrilleJeu);
 
 	effacerCarres(7, (positionDKJr * 2) + 7, 2, 2);
+	tueEnnemisProximite();
 	pthread_exit(0);
 }
 
@@ -1207,5 +1209,6 @@ void HandlerSIGCHLD(int signal)
 	pthread_mutex_unlock(&mutexGrilleJeu);
 
 	effacerCarres(11, (positionDKJr * 2) + 7, 2, 2);
+	tueEnnemisProximite();
 	pthread_exit(0);
 }
